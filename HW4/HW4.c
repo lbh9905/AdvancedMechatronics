@@ -282,8 +282,17 @@ int main() {
 
         // --- ROW 1 (y=8): static label to show display is working ---
         // This fills up the second row with a fixed message
-        sprintf(message, "HW4 OLED TEST");
-        drawString(0, 8, message);
+        //sprintf(message, "HW4 OLED Test");
+        //drawString(0, 8, message);
+
+        //Row 1
+        char longMessage[] = "hey google, show me this mans balls        ";
+
+        int msgLen = strlen(longMessage) * 5;  // strlen counts your actual chars
+        int offset = (t / 30000) % msgLen;
+
+        drawString(-offset, 8, longMessage);
+        drawString(msgLen - offset, 8, longMessage);
 
         // --- ROW 2 (y=16): seconds since boot ---
         // t is in microseconds, dividing by 1,000,000 gives seconds
