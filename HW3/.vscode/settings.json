@@ -10,12 +10,6 @@
         },
         "debug": {
             "statusBarVisibility": "hidden"
-        },
-        "variant": {
-            "statusBarVisibility": "hidden",
-        },
-        "buildTarget": {
-            "statusBarVisibility": "hidden",
         }
     },
     "cmake.configureOnEdit": false,
