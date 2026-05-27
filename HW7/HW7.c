@@ -7,6 +7,7 @@
 // On the Pico 2W: SPI0, GP16=RX, GP18=SCK, GP19=TX, GP17=CS
 #define SPI_PORT    spi_default
 #define PIN_CS      PICO_DEFAULT_SPI_CSN_PIN   // GP17
+#define LED_PIN     25                         // GP25 - onboard LED
 
 // ── DAC channel select ────────────────────────────────────────────────────────
 // The MCP4912 has two output channels: A and B
@@ -115,6 +116,12 @@ float triangle_voltage(float t, float freq) {
 int main() {
     stdio_init_all();
 
+    // Initialize the onboard LED so we can confirm the Pico is running
+    // The LED will blink once per second
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    printf("hihihi");
+
     // SPI init - MCP4912 requires Mode 0,0: clock idles low, data sampled on rising edge
     spi_init(spi_default, 1000 * 1000);
     spi_set_format(spi_default, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -127,13 +134,7 @@ int main() {
     gpio_set_dir(PIN_CS, GPIO_OUT);
     gpio_put(PIN_CS, 1);  // start high (deselected)
 
-    // ── Step 1 test: output fixed 1.65V on both channels ─────────────────────
-    // Uncomment to verify wiring works before running waveform loop.
-    // You should see ~1.65V DC on oscilloscope on both VOUTA and VOUTB.
-    //
-     writeDAC(DAC_CHANNEL_A, 3.3);
-     writeDAC(DAC_CHANNEL_B, 3.3);
-     while (1) { tight_loop_contents(); }
+    
 
     // ── Step 2: waveform loop ─────────────────────────────────────────────────
     const uint32_t period_us = 1000000 / UPDATE_RATE_HZ;
@@ -141,8 +142,8 @@ int main() {
     const float dt = 1.0f / UPDATE_RATE_HZ;
 
     while (1) {
-        writeDAC(DAC_CHANNEL_A, sine_voltage(t, SINE_FREQ_HZ));
-        writeDAC(DAC_CHANNEL_B, triangle_voltage(t, TRIANGLE_FREQ_HZ));
+        writeDAC(DAC_CHANNEL_A, triangle_voltage(t, TRIANGLE_FREQ_HZ));
+        writeDAC(DAC_CHANNEL_B, sine_voltage(t, SINE_FREQ_HZ));
         t += dt;
         sleep_us(period_us);
     }
