@@ -45,18 +45,16 @@ pico_enable_stdio_uart(HW8 0)
 pico_enable_stdio_usb(HW8 0)
 
 # Add the standard library to the build
+# hardware_spi is needed for SPI communication with the RAM chip and DAC
+# m is needed for sinf() and M_PI in math.h
 target_link_libraries(HW8
-        pico_stdlib)
+        pico_stdlib
+        hardware_spi
+        m)
 
 # Add the standard include files to the build
 target_include_directories(HW8 PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
-# Add any user requested libraries
-target_link_libraries(HW8 
-        
-        )
-
 pico_add_extra_outputs(HW8)
-
