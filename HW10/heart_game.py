@@ -2,7 +2,19 @@ import pgzrun
 import pygame
 import random
 import math
+import serial
 
+# ── Pico serial connection ────────────────────────────────────────────────────
+pico      = None
+left_btn  = False
+right_btn = False
+try:
+    pico = serial.Serial('COM4', timeout=0.01)
+    print("Pico connected!")
+except:
+    print("No Pico found — keyboard only")
+
+# ── Window ────────────────────────────────────────────────────────────────────
 WIDTH  = 800
 HEIGHT = 600
 
@@ -92,7 +104,7 @@ clouds = [[
 ] for _ in range(7)]
 
 
-# ── Draw helpers ─────────────────────────────────────────────────────────────
+# ── Draw helpers ──────────────────────────────────────────────────────────────
 
 def gtext(text, **kw):
     screen.draw.text(text, bold=True, **kw)
@@ -103,7 +115,6 @@ def arcade(text, cx, cy, size, color, shadow=(55,0,75)):
     gtext(text, center=(cx,cy), fontsize=size, color=color)
 
 def soft_glow(x, y, radius, color):
-    """Two outer glow rings only — innermost ring removed."""
     for i in range(2):
         r  = radius + (2-i)*6
         lo = (2-i)*50
@@ -253,6 +264,20 @@ def reset_game():
     life,score=MAX_LIFE,0; level=1; game_state='playing'; invincible_timer=0
     start_level()
 
+def read_pico():
+    """Read latest button state from Pico over serial."""
+    global left_btn, right_btn
+    if pico:
+        try:
+            while pico.in_waiting:
+                line = pico.readline().decode().strip()
+                if line.startswith('(') and ',' in line:
+                    l, r = line[1:-1].split(',')
+                    left_btn  = int(l) == 1
+                    right_btn = int(r) == 1
+        except:
+            pass
+
 
 # ── Update ────────────────────────────────────────────────────────────────────
 
@@ -260,8 +285,13 @@ def update():
     global player_x,player_y,crystal_timer,heart_timer,flower_timer,distance
     global life,score,high_score,game_state,invincible_timer,anim_timer
     global mom_x,mom_y,mom_align_timer,flash_timer,reunion_timer,level
+    global left_btn,right_btn
 
     anim_timer+=1
+
+    # Read Pico buttons every frame
+    read_pico()
+
     for s in sparkles:
         s[1]+=s[2]
         if s[1]>HEIGHT: s[1]=0; s[0]=random.randint(0,WIDTH)
@@ -269,11 +299,20 @@ def update():
         c[0]+=c[3]
         if c[0]>WIDTH+210: c[0]=-210.0; c[1]=float(random.randint(30,HEIGHT-130))
 
+    # Pico buttons can also start / restart the game
+    if game_state=='start' and (left_btn or right_btn):
+        reset_game(); return
+    if game_state=='game_over' and (left_btn or right_btn):
+        reset_game(); return
+    if game_state=='level_complete' and (left_btn or right_btn):
+        level+=1; game_state='playing'; start_level(); return
+
     cfg=level_cfg(level)
 
     if game_state=='playing':
-        if keyboard.left:  player_x=max(PLAYER_RADIUS,player_x-PLAYER_SPEED)
-        if keyboard.right: player_x=min(WIDTH-PLAYER_RADIUS,player_x+PLAYER_SPEED)
+        # Keyboard OR Pico buttons both work
+        if keyboard.left  or left_btn:  player_x=max(PLAYER_RADIUS,player_x-PLAYER_SPEED)
+        if keyboard.right or right_btn: player_x=min(WIDTH-PLAYER_RADIUS,player_x+PLAYER_SPEED)
         distance+=1
         if distance>=cfg['dist_need']:
             game_state='mom_sequence'; mom_x=float(random.randint(100,WIDTH-100))
@@ -316,8 +355,9 @@ def update():
         if invincible_timer>0: invincible_timer-=1
 
     elif game_state=='mom_sequence':
-        if keyboard.left:  player_x=max(PLAYER_RADIUS,player_x-PLAYER_SPEED)
-        if keyboard.right: player_x=min(WIDTH-PLAYER_RADIUS,player_x+PLAYER_SPEED)
+        # Keyboard OR Pico buttons both work
+        if keyboard.left  or left_btn:  player_x=max(PLAYER_RADIUS,player_x-PLAYER_SPEED)
+        if keyboard.right or right_btn: player_x=min(WIDTH-PLAYER_RADIUS,player_x+PLAYER_SPEED)
         if mom_y<MOM_TARGET_Y: mom_y+=2.5
         if mom_y>=MOM_TARGET_Y:
             if abs(player_x-mom_x)<50:
@@ -329,12 +369,10 @@ def update():
         reunion_timer+=1
         prog=reunion_timer/REUNION_DURATION
         if prog<PH2:
-            # Phase 1: babycakes flies up to mom at top
             spd=0.055+prog*0.06
             player_x+=(mom_x-player_x)*spd
             player_y+=(mom_y+24-player_y)*spd
         else:
-            # Phases 2-4: both drift to screen centre
             mom_x+=(WIDTH/2-mom_x)*0.04
             mom_y+=(HEIGHT/2-mom_y)*0.04
             player_x+=(mom_x-player_x)*0.06
@@ -368,7 +406,7 @@ def draw():
         for i,(line,col) in enumerate(lines):
             gtext(line,center=(WIDTH//2,HEIGHT//2-92+i*46),fontsize=21,color=col)
         if (anim_timer//30)%2==0:
-            arcade('PRESS  SPACE  TO  BEGIN',WIDTH//2,HEIGHT//2+162,26,HOT_PINK)
+            arcade('PRESS  LEFT  OR  RIGHT  TO  BEGIN',WIDTH//2,HEIGHT//2+162,26,HOT_PINK)
         if high_score>0:
             gtext('Best score: '+str(high_score),center=(WIDTH//2,HEIGHT//2+210),
                   fontsize=18,color=DARK_PURPLE)
@@ -405,9 +443,7 @@ def draw():
 
     elif game_state=='reunion':
         prog=reunion_timer/REUNION_DURATION
-
         if prog<PH2:
-            # Phase 1: flying up
             draw_heart_poly(mom_x,mom_y,MOM_SIZE+8,LIGHT_PINK)
             draw_heart_poly(mom_x,mom_y,MOM_SIZE,PINK,HOT_PINK)
             gtext('MOM',center=(int(mom_x),int(mom_y)-MOM_SIZE-14),fontsize=20,color=DEEP_PINK)
@@ -415,9 +451,7 @@ def draw():
             draw_heart_poly(player_x,player_y,PLAYER_RADIUS,HOT_PINK,ORANGE)
             if (anim_timer//22)%2==0:
                 gtext('almost there...',center=(WIDTH//2,HEIGHT//2+110),fontsize=24,color=DEEP_PINK)
-
         elif prog<PH3:
-            # Phase 2: centred — glow builds
             sub=(prog-PH2)/(PH3-PH2)
             glow_r=int(sub*90)
             if glow_r>0:
@@ -428,9 +462,7 @@ def draw():
             draw_heart_poly(player_x,player_y,PLAYER_RADIUS,HOT_PINK,ORANGE)
             if (anim_timer//20)%2==0:
                 arcade('FOUND HER!',WIDTH//2,HEIGHT//2+95,38,YELLOW)
-
         elif prog<PH4:
-            # Phase 3: centred — hearts radiate
             sub=(prog-PH3)/(PH4-PH3)
             glow_r=90+int(sub*60)
             screen.draw.filled_circle((int(mom_x),int(mom_y)+15),glow_r,LIGHT_PINK)
@@ -445,9 +477,7 @@ def draw():
                                 mom_y+math.sin(angle)*dist,
                                 max(4,12-int(sub*7)),PINK)
             arcade('REUNITED!',WIDTH//2,HEIGHT//2+110,48,HOT_PINK)
-
         else:
-            # Phase 4: centred — pink wash + expanding burst
             sub=(prog-PH4)/(1.0-PH4)
             alpha_overlay(HOT_PINK,int(sub*160))
             big=MOM_SIZE+15
@@ -461,7 +491,6 @@ def draw():
                                 mom_y+math.sin(angle)*dist,
                                 max(3,10-int(sub*6)),PINK)
             arcade('REUNITED!',WIDTH//2,HEIGHT//2+110,48,HOT_PINK)
-
         draw_hud()
 
     elif game_state=='level_complete':
@@ -474,7 +503,7 @@ def draw():
         gtext('Get ready for Level '+str(level+1)+'!',
               center=(WIDTH//2,HEIGHT//2+42),fontsize=20,color=PURPLE)
         if (anim_timer//30)%2==0:
-            arcade('PRESS  SPACE  TO  CONTINUE',WIDTH//2,HEIGHT//2+105,22,YELLOW)
+            arcade('PRESS  LEFT  OR  RIGHT  TO  CONTINUE',WIDTH//2,HEIGHT//2+105,22,YELLOW)
 
     elif game_state=='game_over':
         for f in flowers: draw_flower(f['x'],f['y'],f['size'],f['petal_col'])
@@ -486,15 +515,15 @@ def draw():
         gtext('Score: '+str(score),center=(WIDTH//2,HEIGHT//2+5),fontsize=26,color=DARK_TEXT)
         gtext('Best:  '+str(high_score),center=(WIDTH//2,HEIGHT//2+38),fontsize=22,color=PURPLE)
         if (anim_timer//30)%2==0:
-            arcade('PRESS  R  TO  RESTART',WIDTH//2,HEIGHT//2+90,24,PURPLE)
+            arcade('PRESS  LEFT  OR  RIGHT  TO  RESTART',WIDTH//2,HEIGHT//2+90,24,PURPLE)
 
 
 def on_key_down(key):
     global game_state,level
-    if   game_state=='start'          and key==keys.SPACE: reset_game()
-    elif game_state=='level_complete' and key==keys.SPACE:
+    if   game_state=='start'          and key in (keys.LEFT, keys.RIGHT): reset_game()
+    elif game_state=='level_complete' and key in (keys.LEFT, keys.RIGHT):
         level+=1; game_state='playing'; start_level()
-    elif game_state=='game_over'      and key==keys.R:     reset_game()
+    elif game_state=='game_over'      and key in (keys.LEFT, keys.RIGHT): reset_game()
 
 
 pgzrun.go()
